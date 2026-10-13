@@ -434,7 +434,7 @@
 
   document.addEventListener("keydown", event => {
     if (event.key === "Escape") { closeMenu(); return; }
-    if ($("imageDialog").open || $("rail").classList.contains("open") || event.ctrlKey || event.altKey || event.metaKey || event.target.closest("input,textarea,select,[contenteditable]")) return;
+    if ($("rail").classList.contains("open") || event.ctrlKey || event.altKey || event.metaKey || event.target.closest("input,textarea,select,[contenteditable]")) return;
     if (event.key === "ArrowLeft") { event.preventDefault(); navigate(currentIndex - 1); }
     else if (event.key === "ArrowRight") { event.preventDefault(); navigate(currentIndex + 1); }
     else if (/^[1-9]$/.test(event.key)) { const option = queue[currentIndex]?.options?.[Number(event.key) - 1]; if (option) { event.preventDefault(); selectOption(String(option.key)); } }
