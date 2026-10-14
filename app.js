@@ -6,7 +6,7 @@
   const NOTES = window.PATHOLOGY_NOTES;
   const PAGE_SIZE = 120;
   const typeNames = { single: "单选题", multiple: "多选题", text: "文字题" };
-  const modeNames = { all: "按章节", wrong: "错题本", star: "收藏", marked: "视频没讲", notes: "注释" };
+  const modeNames = { all: "按章节", wrong: "错题本", star: "收藏", mastered: "已熟练", marked: "视频没讲", notes: "注释" };
   const $ = id => document.getElementById(id);
   const escape = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
   const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
@@ -63,6 +63,7 @@
       result: ["correct", "wrong", "neutral"].includes(raw.result) ? raw.result : null,
       star: raw.star === true,
       marked: raw.marked === true,
+      mastered: raw.mastered === true,
       note: typeof raw.note === "string" ? raw.note.slice(0, 100000) : "",
       updatedAt: Number.isFinite(raw.updatedAt) && raw.updatedAt > 0 ? raw.updatedAt : 0
     };
@@ -129,7 +130,7 @@
   if (typeof state.view.currentId !== "string") state.view.currentId = "";
 
   function recordFor(id) {
-    return state.records[id] || { selected: [], text: "", submitted: false, result: null, star: false, marked: false, note: "", updatedAt: 0 };
+    return state.records[id] || { selected: [], text: "", submitted: false, result: null, star: false, marked: false, mastered: false, note: "", updatedAt: 0 };
   }
 
   function changeRecord(id, changes) {
@@ -188,7 +189,7 @@
 
   function matchesMode(question) {
     const record = recordFor(question.id);
-    return state.view.mode === "all" || state.view.mode === "wrong" && resultFor(question) === "wrong" || state.view.mode === "star" && record.star || state.view.mode === "marked" && record.marked || state.view.mode === "notes" && Boolean(record.note.trim());
+    return state.view.mode === "all" || state.view.mode === "wrong" && resultFor(question) === "wrong" || state.view.mode === "star" && record.star || state.view.mode === "mastered" && record.mastered || state.view.mode === "marked" && record.marked || state.view.mode === "notes" && Boolean(record.note.trim());
   }
 
   function seededShuffle(list, seed) {
@@ -282,7 +283,8 @@
     const graded = stats.correct + stats.wrong;
     const accuracy = graded ? `${Math.round(stats.correct / graded * 100)}%` : "—";
     const marked = questions.filter(question => recordFor(question.id).marked).length;
-    $("modes").innerHTML = Object.entries(modeNames).map(([mode, label]) => `<button class="chip" data-mode="${mode}" aria-pressed="${state.view.mode === mode}">${label}<span class="c">${mode === "all" ? stats.total : mode === "wrong" ? stats.wrong : mode === "star" ? stats.star : mode === "marked" ? marked : stats.notes}</span></button>`).join("") + `<button class="chip" data-order-toggle aria-pressed="${state.view.order === "random"}">乱序</button>`;
+    const mastered = questions.filter(question => recordFor(question.id).mastered).length;
+    $("modes").innerHTML = Object.entries(modeNames).map(([mode, label]) => `<button class="chip" data-mode="${mode}" aria-pressed="${state.view.mode === mode}">${label}<span class="c">${mode === "all" ? stats.total : mode === "wrong" ? stats.wrong : mode === "star" ? stats.star : mode === "mastered" ? mastered : mode === "marked" ? marked : stats.notes}</span></button>`).join("") + `<button class="chip" data-order-toggle aria-pressed="${state.view.order === "random"}">乱序</button>`;
     $("railStats").textContent = `已答 ${stats.answered}/${stats.total} · 正确率 ${accuracy} · 计分 ${graded} 题 · 不计分 ${stats.neutral} 题 · 记录保存在本机`;
     $("languages").innerHTML = [["all", "全部"], ["zh", "中文"], ["en", "English"]].map(([language, label]) => `<button data-language="${language}" aria-pressed="${state.view.language === language}">${label}</button>`).join("");
     const chapterButton = (id, number, name, list) => {
@@ -349,7 +351,7 @@
     const previousQuestionId = $("notePane").dataset.noteQuestionId || "";
     const previousNoteScroll = activeNoteScroller()?.scrollTop || 0;
     if (!question) {
-      const message = state.view.mode === "wrong" ? "当前范围没有错题。可以先在全部题目中练习，答错的题目会自动加入这里。" : state.view.mode === "star" ? "当前范围没有收藏。练习时点击题目右上角的收藏按钮即可加入。" : state.view.mode === "notes" ? "当前范围没有笔记。在题目下方记录你的思考，之后可在这里复习。" : "当前条件下没有找到题目。可以清除搜索或放宽章节、语言和题型范围。";
+      const message = state.view.mode === "wrong" ? "当前范围没有错题。可以先在全部题目中练习，答错的题目会自动加入这里。" : state.view.mode === "star" ? "当前范围没有收藏。练习时点击题目右上角的收藏按钮即可加入。" : state.view.mode === "mastered" ? "当前范围没有已熟练的题目。练习时点击“标为已熟练”即可加入，答对不会自动标记。" : state.view.mode === "notes" ? "当前范围没有笔记。在右侧注释栏记录你的思考，之后可在这里复习。" : "当前条件下没有找到题目。可以清除搜索或放宽章节、语言和题型范围。";
       $("questionArea").innerHTML = `<div class="empty"><h3>这里暂时没有题目</h3><p>${message}</p><button class="button" data-reset-filters>查看全部题目</button></div>`;
       $("notePane").dataset.noteQuestionId = "";
       $("notePane").innerHTML = '<header class="note-pane-header"><strong>我的注释</strong></header><div class="note-context">当前筛选范围内没有题目</div><div class="note-content"><p class="note-empty">没有当前题目可供记录注释。</p></div>';
@@ -376,7 +378,7 @@
       return `<button class="option${selected ? " selected" : ""}${correct ? " correct" : ""}${wrong ? " wrong" : ""}" data-option="${escape(key)}" aria-pressed="${selected}" ${record.submitted || answerRevealed ? "disabled" : ""}><span class="option-key">${escape(key)}</span><span class="option-text">${translatedText(option.text, question, key)}</span><span class="option-mark">${mark}</span></button>`;
     }).join("")}</div>` : `<label class="selection-hint" for="writtenAnswer">你的作答</label><textarea class="answer-input" id="writtenAnswer" placeholder="在这里写下答案或思考……" ${record.submitted || answerRevealed ? "disabled" : ""}>${escape(record.text)}</textarea>`;
     const verdict = record.submitted ? `<div class="verdict ${outcome || "neutral"}" role="status"><strong>${outcome === "correct" ? "回答正确" : outcome === "wrong" ? "本题回答错误" : "已记录作答 · 本题不计分"}</strong><small>${outcome === "neutral" ? escape(info.reason) : `你的答案：${escape(displayAnswer(record.selected))}　参考答案：${escape(displayAnswer(info.effective))}`}</small></div>` : answerRevealed ? '<div class="verdict"><strong>已显示参考答案</strong><small>本次查看不计为作答。点击重新作答后可以继续练习。</small></div>' : "";
-    $("questionArea").innerHTML = `<article class="sheet" data-question-id="${escape(question.id)}"><div class="question-head"><span class="tag">${escape(typeNames[question.type] || "待核对题型")}</span><span class="tag">${question.language === "en" ? "English" : "中文"}</span><span class="question-number">第 ${escape(question.number)} 题</span><button class="icon mark-button${record.marked ? " is-marked" : ""}" data-marked aria-pressed="${record.marked}" title="标记课程视频尚未讲到">${record.marked ? "● 视频没讲" : "○ 视频没讲"}</button><button class="icon note-toggle" data-note-toggle aria-pressed="${noteEditing}">${record.note.trim() ? "✎ 有注释" : "✎ 注释"}</button><button class="icon source-button" data-source-open>看原页</button><span class="spacer"></span><button class="icon" data-star aria-pressed="${record.star}">${record.star ? "★ 已收藏" : "☆ 收藏"}</button></div>${hasTranslation(question) ? `<div class="translation-control"><button class="button" data-translation aria-pressed="${translationVisible}">${translationVisible ? "隐藏中文翻译" : "显示中文翻译"}</button></div>` : ""}${notices.length ? `<div class="notice">${escape(notices.join("\n"))}</div>` : ""}${question.sharedStem ? `<div class="shared-stem">${translatedText(question.sharedStem, question, "sharedStem")}</div>` : ""}<h3 class="stem">${translatedText(question.stem, question, "stem")}</h3>${questionImagesMarkup(question)}${selectionInput}${!revealed ? `<p class="selection-hint">${question.type === "single" && options.length ? "点击一个选项后自动记录并判题。" : question.type === "multiple" ? "请选择所有符合题意的选项，再提交答案。" : "完成作答后提交，再查看参考答案。"}</p>` : ""}<div class="actions">${!revealed && (question.type !== "single" || !options.length) ? `<button class="button primary" data-submit ${options.length && !record.selected.length ? "disabled" : ""}>提交答案</button>` : ""}${!revealed ? '<button class="button" data-reveal>查看答案</button>' : '<button class="button" data-retry>重新作答</button>'}</div>${verdict}${revealed ? sourcesMarkup(question, info) : ""}</article>`;
+    $("questionArea").innerHTML = `<article class="sheet" data-question-id="${escape(question.id)}"><div class="question-head"><span class="tag">${escape(typeNames[question.type] || "待核对题型")}</span><span class="tag">${question.language === "en" ? "English" : "中文"}</span><span class="question-number">第 ${escape(question.number)} 题</span><button class="icon mark-button${record.marked ? " is-marked" : ""}" data-marked aria-pressed="${record.marked}" title="标记课程视频尚未讲到">${record.marked ? "● 视频没讲" : "○ 视频没讲"}</button><button class="icon note-toggle" data-note-toggle aria-pressed="${noteEditing}">${record.note.trim() ? "✎ 有注释" : "✎ 注释"}</button><button class="icon mastery-button" data-mastered aria-pressed="${record.mastered}">${record.mastered ? "取消熟练" : "标为已熟练"}</button><button class="icon source-button" data-source-open>看原页</button><span class="spacer"></span><button class="icon" data-star aria-pressed="${record.star}">${record.star ? "★ 已收藏" : "☆ 收藏"}</button></div>${hasTranslation(question) ? `<div class="translation-control"><button class="button" data-translation aria-pressed="${translationVisible}">${translationVisible ? "隐藏中文翻译" : "显示中文翻译"}</button></div>` : ""}${notices.length ? `<div class="notice">${escape(notices.join("\n"))}</div>` : ""}${question.sharedStem ? `<div class="shared-stem">${translatedText(question.sharedStem, question, "sharedStem")}</div>` : ""}<h3 class="stem">${translatedText(question.stem, question, "stem")}</h3>${questionImagesMarkup(question)}${selectionInput}${!revealed ? `<p class="selection-hint">${question.type === "single" && options.length ? "点击一个选项后自动记录并判题。" : question.type === "multiple" ? "请选择所有符合题意的选项，再提交答案。" : "完成作答后提交，再查看参考答案。"}</p>` : ""}<div class="actions">${!revealed && (question.type !== "single" || !options.length) ? `<button class="button primary" data-submit ${options.length && !record.selected.length ? "disabled" : ""}>提交答案</button>` : ""}${!revealed ? '<button class="button" data-reveal>查看答案</button>' : '<button class="button" data-retry>重新作答</button>'}</div>${verdict}${revealed ? sourcesMarkup(question, info) : ""}</article>`;
     $("notePane").dataset.noteQuestionId = question.id;
     $("notePane").innerHTML = noteMarkup(record, question);
     if (NOTES) NOTES.hydrate($("notePane"));
@@ -688,6 +690,13 @@
       flushNote();
       const question = queue[currentIndex];
       changeRecord(question.id, { marked: !recordFor(question.id).marked });
+      rebuildQueue(question.id);
+    }
+    else if (own(button.dataset, "mastered")) {
+      flushNote();
+      const question = queue[currentIndex];
+      if (!question) return;
+      changeRecord(question.id, { mastered: !recordFor(question.id).mastered });
       rebuildQueue(question.id);
     }
     else if (own(button.dataset, "sourcePages")) openSourcePages(queue[currentIndex]);

@@ -159,6 +159,7 @@
 .note-editor.preview-only .note-input,.note-editor.preview-only .note-edit-label,.note-editor.preview-only .note-preview-label { display: none; }
 .note-editor.preview-only .note-live-preview { min-height: 0; }
 .note-empty { color: var(--muted); font-size: 13px; }
+.mastery-button[aria-pressed="true"] { color: var(--ok); border-color: var(--ok); background: var(--ok-soft); }
 .note-preview > :first-child { margin-top: 0; }
 .note-preview > :last-child { margin-bottom: 0; }
 @media(min-width:1500px) { .app { grid-template-columns: 232px minmax(0, 1fr); } .stage { padding: 18px; } }
