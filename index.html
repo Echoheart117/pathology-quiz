@@ -6,20 +6,19 @@
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="病理学题库学习桌：按章节练习、复习错题、收藏题目和记录笔记。">
   <title>病理学刷题本</title>
-  <link rel="stylesheet" href="styles.css?v=20261013-translation1">
+  <link rel="stylesheet" href="styles.css?v=20261013-pages1">
 </head>
 <body>
   <a class="skip-link" href="#questionArea">跳到题目</a>
   <div id="storageWarning" class="storage-warning" role="alert" hidden></div>
   <div class="app">
     <aside class="rail" id="rail" aria-label="学习设置与章节">
-      <div class="brand"><span class="brand-mark" aria-hidden="true">病</span><div><h1>病理学刷题本</h1><p>把每一道题，学得更清楚。</p></div><button id="closeMenu" class="icon close-menu" aria-label="关闭章节列表">×</button></div>
-      <div class="overview" id="overview"></div>
+      <div class="brand"><h1>病理学刷题本</h1><span>中英文题库</span><button id="closeMenu" class="icon close-menu" aria-label="关闭章节列表">×</button></div>
       <div class="rail-section"><p class="section-label">练习范围</p><div class="mode-list" id="modes"></div></div>
       <div class="rail-section"><p class="section-label">题目语言</p><div class="segmented" id="languages"></div></div>
       <div class="chapter-heading"><span class="section-label">章节目录</span><button class="text-button" id="resume">继续学习</button></div>
       <nav class="chapter-list" id="chapters" aria-label="章节目录"></nav>
-      <footer class="rail-footer"><p>学习记录保存在当前浏览器。</p><div class="footer-tools"><button class="text-button" id="exportRecords">导出记录</button><button class="text-button" id="importRecords">导入记录</button><button class="text-button" id="theme">切换主题</button></div><input type="file" id="importFile" accept=".json,application/json" hidden></footer>
+      <footer class="rail-footer"><p id="railStats">学习记录保存在当前浏览器。</p><div class="footer-tools"><button class="text-button" id="exportRecords">备份</button><button class="text-button" id="importRecords">恢复</button><button class="text-button" id="theme">切换主题</button></div><input type="file" id="importFile" accept=".json,application/json" hidden></footer>
     </aside>
     <button class="drawer-shade" id="drawerShade" aria-label="关闭章节列表" hidden></button>
     <main class="main">
@@ -29,10 +28,23 @@
     </main>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <dialog class="source-dialog" id="sourceDialog" aria-label="查看原始资料">
+    <header class="dialog-toolbar"><strong data-dialog-title>原始资料</strong><button class="icon" data-close-dialog aria-label="关闭原始资料">关闭</button></header>
+    <div class="pdf-columns">
+      <section class="pdf-pane"><div class="pdf-controls"><label id="originalPageLabel">原题页码 <input id="originalPage" type="number" min="1" max="382"></label><button class="text-button" data-page-prev="original" aria-label="原题上一页">上一页</button><button class="text-button" data-page-next="original" aria-label="原题下一页">下一页</button><a id="originalPdf" target="_blank" rel="noopener">打开原始 PDF</a></div><div class="page-image-frame"><img id="originalPageImage" alt="原始题目页面"></div></section>
+      <section class="pdf-pane"><div class="pdf-controls"><label id="answerPageLabel">原书答案页码 <input id="answerPage" type="number" min="1" max="382"></label><button class="text-button" data-page-prev="answer" aria-label="答案上一页">上一页</button><button class="text-button" data-page-next="answer" aria-label="答案下一页">下一页</button><button class="text-button" data-answer-doc="corrected">答案修正版</button><button class="text-button" data-answer-doc="original">原书答案页</button><a id="answerPdf" target="_blank" rel="noopener">打开对应 PDF</a></div><div class="page-image-frame"><img id="answerPageImage" alt="原书答案页面"></div></section>
+    </div>
+    <p class="image-hint" id="sourceHint">左右两栏均显示原始题库 PDF。</p>
+  </dialog>
+  <dialog class="scan-dialog" id="scanDialog" aria-label="查看扫描答案">
+    <header class="dialog-toolbar"><strong data-dialog-title>扫描答案</strong><button class="icon" data-close-dialog aria-label="关闭扫描答案">关闭</button></header>
+    <div class="scan-images" id="scanImages"></div>
+  </dialog>
   <script src="data.js"></script>
-  <script src="corrections.js"></script>
+  <script src="corrections.js?v=20261013-sources1"></script>
   <script src="review-flags.js"></script>
   <script src="translations.js?v=20261013-translation1"></script>
-  <script src="app.js?v=20261013-translation1"></script>
+  <script src="notes.js?v=20261013-notes2"></script>
+  <script src="app.js?v=20261013-pages1"></script>
 </body>
 </html>
