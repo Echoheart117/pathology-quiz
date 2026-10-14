@@ -6,7 +6,7 @@
   const NOTES = window.PATHOLOGY_NOTES;
   const PAGE_SIZE = 120;
   const typeNames = { single: "单选题", multiple: "多选题", text: "文字题" };
-  const modeNames = { all: "按章节", wrong: "错题本", star: "收藏", mastered: "已熟练", marked: "视频没讲", notes: "注释" };
+  const modeNames = { all: "按章节", wrong: "错题本", star: "收藏", mastered: "已熟练", disputed: "争议题", marked: "视频没讲", notes: "做题笔记" };
   const $ = id => document.getElementById(id);
   const escape = value => String(value ?? "").replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
   const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
@@ -33,6 +33,7 @@
   let lastTimestamp = Date.now();
   let sourceQuestion = null;
   let answerDocument = "corrected";
+  let currentAttempt = null;
 
   function warnStorage(message) {
     storageAvailable = false;
@@ -64,6 +65,7 @@
       star: raw.star === true,
       marked: raw.marked === true,
       mastered: raw.mastered === true,
+      disputed: raw.disputed === true,
       note: typeof raw.note === "string" ? raw.note.slice(0, 100000) : "",
       updatedAt: Number.isFinite(raw.updatedAt) && raw.updatedAt > 0 ? raw.updatedAt : 0
     };
@@ -130,7 +132,7 @@
   if (typeof state.view.currentId !== "string") state.view.currentId = "";
 
   function recordFor(id) {
-    return state.records[id] || { selected: [], text: "", submitted: false, result: null, star: false, marked: false, mastered: false, note: "", updatedAt: 0 };
+    return state.records[id] || { selected: [], text: "", submitted: false, result: null, star: false, marked: false, mastered: false, disputed: false, note: "", updatedAt: 0 };
   }
 
   function changeRecord(id, changes) {
@@ -139,7 +141,17 @@
     persist();
   }
 
-  // 题目卡片和右侧注释栏各自标记题目，读取输入内容时沿 DOM 向上查找最近的归属记录。
+  function beginAttempt(id, force = false) {
+    const record = recordFor(id);
+    currentAttempt = record.mastered && record.submitted && !force ? null : { id, selected: [], text: "", submitted: false, result: null };
+  }
+
+  function activeRecord(id) {
+    const record = recordFor(id);
+    return currentAttempt?.id === id ? { ...record, ...currentAttempt } : record;
+  }
+
+  // 题目卡片和右侧做题笔记栏各自标记题目，读取输入内容时沿 DOM 向上查找最近的归属记录。
   function questionIdFor(element) {
     const owner = element?.closest("[data-question-id], [data-note-question-id]");
     return owner?.dataset.questionId || owner?.dataset.noteQuestionId || "";
@@ -189,7 +201,7 @@
 
   function matchesMode(question) {
     const record = recordFor(question.id);
-    return state.view.mode === "all" || state.view.mode === "wrong" && resultFor(question) === "wrong" || state.view.mode === "star" && record.star || state.view.mode === "mastered" && record.mastered || state.view.mode === "marked" && record.marked || state.view.mode === "notes" && Boolean(record.note.trim());
+    return state.view.mode === "all" || state.view.mode === "wrong" && resultFor(question) === "wrong" || state.view.mode === "star" && record.star || state.view.mode === "mastered" && record.mastered || state.view.mode === "disputed" && record.disputed || state.view.mode === "marked" && record.marked || state.view.mode === "notes" && Boolean(record.note.trim());
   }
 
   function seededShuffle(list, seed) {
@@ -203,7 +215,8 @@
     return shuffled;
   }
 
-  function rebuildQueue(preferredId = state.view.currentId) {
+  function rebuildQueue(preferredId = state.view.currentId, preserveCurrentAttempt = false) {
+    const previousId = queue[currentIndex]?.id || "";
     const search = state.view.search.trim().toLocaleLowerCase();
     const words = search.split(/\s+/).filter(Boolean);
     const filtered = questions.filter(question => {
@@ -218,6 +231,8 @@
     queue = state.view.order === "random" ? seededShuffle(filtered, state.view.seed) : filtered;
     const preferredIndex = queue.findIndex(question => question.id === preferredId);
     currentIndex = preferredIndex >= 0 ? preferredIndex : 0;
+    const selectedId = queue[currentIndex]?.id || "";
+    if (selectedId !== previousId || !preserveCurrentAttempt) beginAttempt(selectedId);
     mapPage = Math.floor(currentIndex / PAGE_SIZE);
     answerRevealed = false;
     translationVisible = false;
@@ -237,13 +252,13 @@
   }
 
   /*
-   * 右栏始终保留题目注释的标题、题目信息和操作入口。
+   * 右栏始终保留题目做题笔记的标题、题目信息和操作入口。
    * 编辑时只显示文本框；切换到预览后显示渲染内容，两个状态共用同一份记录。
    */
   function noteMarkup(record, question) {
-    const emptyNote = '<p class="note-empty">这道题还没有注释。点击“编辑”记录教材依据或待核对的问题。</p>';
+    const emptyNote = '<p class="note-empty">这道题还没有做题笔记。点击“编辑”记录教材依据或待核对的问题。</p>';
     const renderedNote = record.note.trim() && NOTES ? NOTES.render(record.note) : record.note.trim() ? escape(record.note) : emptyNote;
-    const editorNote = record.note.trim() ? renderedNote : '<p class="note-empty">这道题还没有注释。</p>';
+    const editorNote = record.note.trim() ? renderedNote : '<p class="note-empty">这道题还没有做题笔记。</p>';
     const status = storageAvailable ? "边写边自动保存" : "临时保存，请导出记录";
     const viewButton = noteEditing
       ? `<button class="text-button" data-note-preview aria-pressed="${notePreviewMode}">${notePreviewMode ? "编辑" : "预览"}</button><button class="text-button" data-note-done>完成</button>`
@@ -251,7 +266,7 @@
 
     return `
       <header class="note-pane-header">
-        <strong>我的注释</strong><span id="noteStatus">${status}</span>
+        <strong>做题笔记</strong><span id="noteStatus">${status}</span>
       </header>
       <div class="note-context">${escape(question.chapterName)} · ${question.language === "en" ? "英文" : "中文"}第 ${escape(question.number)} 题</div>
       <div class="note-pane-controls">
@@ -264,7 +279,7 @@
       </div>
       <div class="note-content note-preview" id="notePreview" ${noteEditing ? "hidden" : ""}>${renderedNote}</div>
       <div class="note-editor${notePreviewMode ? " preview-only" : ""}" ${noteEditing ? "" : "hidden"}>
-        <label class="note-edit-label" for="questionNote">编辑 Markdown 注释</label>
+        <label class="note-edit-label" for="questionNote">编辑 Markdown 做题笔记</label>
         <textarea class="note-input" id="questionNote" placeholder="记录教材依据、容易混淆的知识点或仍需核对的问题……">${escape(record.note)}</textarea>
         <div class="note-preview-label">Markdown 预览</div>
         <div class="note-live-preview note-preview" id="noteLivePreview">${editorNote}</div>
@@ -284,7 +299,8 @@
     const accuracy = graded ? `${Math.round(stats.correct / graded * 100)}%` : "—";
     const marked = questions.filter(question => recordFor(question.id).marked).length;
     const mastered = questions.filter(question => recordFor(question.id).mastered).length;
-    $("modes").innerHTML = Object.entries(modeNames).map(([mode, label]) => `<button class="chip" data-mode="${mode}" aria-pressed="${state.view.mode === mode}">${label}<span class="c">${mode === "all" ? stats.total : mode === "wrong" ? stats.wrong : mode === "star" ? stats.star : mode === "mastered" ? mastered : mode === "marked" ? marked : stats.notes}</span></button>`).join("") + `<button class="chip" data-order-toggle aria-pressed="${state.view.order === "random"}">乱序</button>`;
+    const disputed = questions.filter(question => recordFor(question.id).disputed).length;
+    $("modes").innerHTML = Object.entries(modeNames).map(([mode, label]) => `<button class="chip" data-mode="${mode}" aria-pressed="${state.view.mode === mode}">${label}<span class="c">${mode === "all" ? stats.total : mode === "wrong" ? stats.wrong : mode === "star" ? stats.star : mode === "mastered" ? mastered : mode === "disputed" ? disputed : mode === "marked" ? marked : stats.notes}</span></button>`).join("") + `<button class="chip" data-order-toggle aria-pressed="${state.view.order === "random"}">乱序</button>`;
     $("railStats").textContent = `已答 ${stats.answered}/${stats.total} · 正确率 ${accuracy} · 计分 ${graded} 题 · 不计分 ${stats.neutral} 题 · 记录保存在本机`;
     $("languages").innerHTML = [["all", "全部"], ["zh", "中文"], ["en", "English"]].map(([language, label]) => `<button data-language="${language}" aria-pressed="${state.view.language === language}">${label}</button>`).join("");
     const chapterButton = (id, number, name, list) => {
@@ -351,17 +367,17 @@
     const previousQuestionId = $("notePane").dataset.noteQuestionId || "";
     const previousNoteScroll = activeNoteScroller()?.scrollTop || 0;
     if (!question) {
-      const message = state.view.mode === "wrong" ? "当前范围没有错题。可以先在全部题目中练习，答错的题目会自动加入这里。" : state.view.mode === "star" ? "当前范围没有收藏。练习时点击题目右上角的收藏按钮即可加入。" : state.view.mode === "mastered" ? "当前范围没有已熟练的题目。练习时点击“标为已熟练”即可加入，答对不会自动标记。" : state.view.mode === "notes" ? "当前范围没有笔记。在右侧注释栏记录你的思考，之后可在这里复习。" : "当前条件下没有找到题目。可以清除搜索或放宽章节、语言和题型范围。";
+      const message = state.view.mode === "wrong" ? "当前范围没有错题。可以先在全部题目中练习，答错的题目会自动加入这里。" : state.view.mode === "star" ? "当前范围没有收藏。练习时点击题目右上角的收藏按钮即可加入。" : state.view.mode === "mastered" ? "当前范围没有已熟练的题目。练习时点击“标为已熟练”即可加入，答对不会自动标记。" : state.view.mode === "disputed" ? "当前范围没有手动标记的争议题。点击题目上的“标为争议”即可加入，标记不改变计分。" : state.view.mode === "notes" ? "当前范围没有笔记。在右侧做题笔记栏记录你的思考，之后可在这里复习。" : "当前条件下没有找到题目。可以清除搜索或放宽章节、语言和题型范围。";
       $("questionArea").innerHTML = `<div class="empty"><h3>这里暂时没有题目</h3><p>${message}</p><button class="button" data-reset-filters>查看全部题目</button></div>`;
       $("notePane").dataset.noteQuestionId = "";
-      $("notePane").innerHTML = '<header class="note-pane-header"><strong>我的注释</strong></header><div class="note-context">当前筛选范围内没有题目</div><div class="note-content"><p class="note-empty">没有当前题目可供记录注释。</p></div>';
+      $("notePane").innerHTML = '<header class="note-pane-header"><strong>做题笔记</strong></header><div class="note-context">当前筛选范围内没有题目</div><div class="note-content"><p class="note-empty">没有当前题目可供记录做题笔记。</p></div>';
       $("questionNavigation").innerHTML = "";
       $("questionMap").innerHTML = "";
       $("questionScroll").scrollTop = 0;
       $("notePane .note-content")?.scrollTo(0, 0);
       return;
     }
-    const record = recordFor(question.id);
+    const record = activeRecord(question.id);
     const info = answerInfo(question);
     const revealed = record.submitted || answerRevealed;
     const outcome = resultFor(question);
@@ -378,7 +394,7 @@
       return `<button class="option${selected ? " selected" : ""}${correct ? " correct" : ""}${wrong ? " wrong" : ""}" data-option="${escape(key)}" aria-pressed="${selected}" ${record.submitted || answerRevealed ? "disabled" : ""}><span class="option-key">${escape(key)}</span><span class="option-text">${translatedText(option.text, question, key)}</span><span class="option-mark">${mark}</span></button>`;
     }).join("")}</div>` : `<label class="selection-hint" for="writtenAnswer">你的作答</label><textarea class="answer-input" id="writtenAnswer" placeholder="在这里写下答案或思考……" ${record.submitted || answerRevealed ? "disabled" : ""}>${escape(record.text)}</textarea>`;
     const verdict = record.submitted ? `<div class="verdict ${outcome || "neutral"}" role="status"><strong>${outcome === "correct" ? "回答正确" : outcome === "wrong" ? "本题回答错误" : "已记录作答 · 本题不计分"}</strong><small>${outcome === "neutral" ? escape(info.reason) : `你的答案：${escape(displayAnswer(record.selected))}　参考答案：${escape(displayAnswer(info.effective))}`}</small></div>` : answerRevealed ? '<div class="verdict"><strong>已显示参考答案</strong><small>本次查看不计为作答。点击重新作答后可以继续练习。</small></div>' : "";
-    $("questionArea").innerHTML = `<article class="sheet" data-question-id="${escape(question.id)}"><div class="question-head"><span class="tag">${escape(typeNames[question.type] || "待核对题型")}</span><span class="tag">${question.language === "en" ? "English" : "中文"}</span><span class="question-number">第 ${escape(question.number)} 题</span><button class="icon mark-button${record.marked ? " is-marked" : ""}" data-marked aria-pressed="${record.marked}" title="标记课程视频尚未讲到">${record.marked ? "● 视频没讲" : "○ 视频没讲"}</button><button class="icon note-toggle" data-note-toggle aria-pressed="${noteEditing}">${record.note.trim() ? "✎ 有注释" : "✎ 注释"}</button><button class="icon mastery-button" data-mastered aria-pressed="${record.mastered}">${record.mastered ? "取消熟练" : "标为已熟练"}</button><button class="icon source-button" data-source-open>看原页</button><span class="spacer"></span><button class="icon" data-star aria-pressed="${record.star}">${record.star ? "★ 已收藏" : "☆ 收藏"}</button></div>${hasTranslation(question) ? `<div class="translation-control"><button class="button" data-translation aria-pressed="${translationVisible}">${translationVisible ? "隐藏中文翻译" : "显示中文翻译"}</button></div>` : ""}${notices.length ? `<div class="notice">${escape(notices.join("\n"))}</div>` : ""}${question.sharedStem ? `<div class="shared-stem">${translatedText(question.sharedStem, question, "sharedStem")}</div>` : ""}<h3 class="stem">${translatedText(question.stem, question, "stem")}</h3>${questionImagesMarkup(question)}${selectionInput}${!revealed ? `<p class="selection-hint">${question.type === "single" && options.length ? "点击一个选项后自动记录并判题。" : question.type === "multiple" ? "请选择所有符合题意的选项，再提交答案。" : "完成作答后提交，再查看参考答案。"}</p>` : ""}<div class="actions">${!revealed && (question.type !== "single" || !options.length) ? `<button class="button primary" data-submit ${options.length && !record.selected.length ? "disabled" : ""}>提交答案</button>` : ""}${!revealed ? '<button class="button" data-reveal>查看答案</button>' : '<button class="button" data-retry>重新作答</button>'}</div>${verdict}${revealed ? sourcesMarkup(question, info) : ""}</article>`;
+    $("questionArea").innerHTML = `<article class="sheet" data-question-id="${escape(question.id)}"><div class="question-head"><span class="tag">${escape(typeNames[question.type] || "待核对题型")}</span><span class="tag">${question.language === "en" ? "English" : "中文"}</span><span class="question-number">第 ${escape(question.number)} 题</span><button class="icon mark-button${record.marked ? " is-marked" : ""}" data-marked aria-pressed="${record.marked}" title="标记课程视频尚未讲到">${record.marked ? "● 视频没讲" : "○ 视频没讲"}</button><button class="icon note-toggle" data-note-toggle aria-pressed="${noteEditing}">${record.note.trim() ? "✎ 有笔记" : "✎ 做题笔记"}</button><button class="icon mastery-button" data-mastered aria-pressed="${record.mastered}">${record.mastered ? "取消熟练" : "标为已熟练"}</button><button class="icon dispute-button" data-disputed aria-pressed="${record.disputed}">${record.disputed ? "取消争议" : "标为争议"}</button><button class="icon source-button" data-source-open>看原页</button><span class="spacer"></span><button class="icon" data-star aria-pressed="${record.star}">${record.star ? "★ 已收藏" : "☆ 收藏"}</button></div>${hasTranslation(question) ? `<div class="translation-control"><button class="button" data-translation aria-pressed="${translationVisible}">${translationVisible ? "隐藏中文翻译" : "显示中文翻译"}</button></div>` : ""}${notices.length ? `<div class="notice">${escape(notices.join("\n"))}</div>` : ""}${question.sharedStem ? `<div class="shared-stem">${translatedText(question.sharedStem, question, "sharedStem")}</div>` : ""}<h3 class="stem">${translatedText(question.stem, question, "stem")}</h3>${questionImagesMarkup(question)}${selectionInput}${!revealed ? `<p class="selection-hint">${question.type === "single" && options.length ? "点击一个选项后自动记录并判题。" : question.type === "multiple" ? "请选择所有符合题意的选项，再提交答案。" : "完成作答后提交，再查看参考答案。"}</p>` : ""}<div class="actions">${!revealed && (question.type !== "single" || !options.length) ? `<button class="button primary" data-submit ${options.length && !record.selected.length ? "disabled" : ""}>提交答案</button>` : ""}${!revealed ? '<button class="button" data-reveal>查看答案</button>' : '<button class="button" data-retry>重新作答</button>'}<button class="button" data-copy-question>复制题目图片</button></div>${verdict}${revealed ? sourcesMarkup(question, info) : ""}</article>`;
     $("notePane").dataset.noteQuestionId = question.id;
     $("notePane").innerHTML = noteMarkup(record, question);
     if (NOTES) NOTES.hydrate($("notePane"));
@@ -408,7 +424,7 @@
     const chapter = chapterById.get(state.view.chapterId);
     $("chapterTitle").textContent = chapter ? `第 ${chapter.number} 章 ${chapter.name}` : "全部章节";
     $("chapterSubtitle").textContent = `${data.title || "病理学题库"} · ${modeNames[state.view.mode]}`;
-    const exportLabel = state.view.mode === "marked" ? `导出 ${queue.length} 道视频没讲的题` : state.view.mode === "notes" ? `导出 ${queue.length} 道有注释的题` : "";
+    const exportLabel = state.view.mode === "marked" ? `导出 ${queue.length} 道视频没讲的题` : state.view.mode === "notes" ? `导出 ${queue.length} 道有做题笔记的题` : "";
     $("scopeSummary").innerHTML = `<span><strong>${modeNames[state.view.mode]}</strong> · ${state.view.language === "all" ? "中英文" : state.view.language === "en" ? "英文" : "中文"} · ${queue.length} 题</span><span>${state.view.order === "random" ? "随机顺序，选项保持原序" : "按原书顺序练习"}${exportLabel ? ` <button class="button primary collection-export" data-export-collection>${exportLabel}</button>` : ""}</span>`;
     $("typeFilter").value = state.view.type;
     $("order").value = state.view.order;
@@ -421,7 +437,7 @@
   function flushNote(noteInput = $("questionNote"), answer = $("writtenAnswer"), questionId = questionIdFor(noteInput) || questionIdFor(answer) || $("questionArea").querySelector("[data-question-id]")?.dataset.questionId) {
     clearTimeout(noteSaveTimer);
     if (questionId && questionById.has(questionId) && noteInput && noteInput.value !== recordFor(questionId).note) changeRecord(questionId, { note: noteInput.value });
-    if (questionId && questionById.has(questionId) && answer && answer.value !== recordFor(questionId).text) changeRecord(questionId, { text: answer.value });
+    if (questionId && questionById.has(questionId) && answer && currentAttempt?.id === questionId) currentAttempt.text = answer.value;
     if (noteInput?.isConnected && $("noteLivePreview")) {
       $("noteLivePreview").innerHTML = NOTES ? NOTES.render(noteInput.value) : escape(noteInput.value);
       if (NOTES) NOTES.hydrate($("noteLivePreview"));
@@ -437,6 +453,7 @@
     noteEditing = false;
     notePreviewMode = false;
     state.view.currentId = queue[index].id;
+    beginAttempt(queue[index].id);
     state.lastQuestionId = queue[index].id;
     state.viewUpdatedAt = Date.now();
     mapPage = Math.floor(index / PAGE_SIZE);
@@ -450,12 +467,14 @@
     const question = queue[currentIndex];
     if (!question) return;
     flushNote();
-    const record = recordFor(question.id);
+    const record = activeRecord(question.id);
     if (question.options?.length && !record.selected.length) { toast("请先选择答案。"); return; }
     if (!question.options?.length && !record.text.trim()) { toast("请先写下你的答案。"); return; }
-    changeRecord(question.id, { submitted: true });
-    const result = resultFor(question);
-    changeRecord(question.id, { result });
+    const info = answerInfo(question);
+    const selected = [...record.selected];
+    const result = !info.gradeable ? "neutral" : new Set(selected).size === new Set(info.effective).size && selected.every(key => info.effective.includes(key)) ? "correct" : "wrong";
+    changeRecord(question.id, { selected, text: record.text, submitted: true, result });
+    currentAttempt = null;
     state.lastQuestionId = question.id;
     persist();
     renderSidebar();
@@ -464,11 +483,11 @@
 
   function selectOption(key) {
     const question = queue[currentIndex];
-    if (!question || recordFor(question.id).submitted || answerRevealed) return;
+    if (!question || activeRecord(question.id).submitted || answerRevealed) return;
     flushNote();
-    const selected = recordFor(question.id).selected;
+    const selected = activeRecord(question.id).selected;
     const next = question.type === "multiple" ? selected.includes(key) ? selected.filter(item => item !== key) : [...selected, key] : [key];
-    changeRecord(question.id, { selected: next });
+    currentAttempt.selected = next;
     if (question.type === "single") submit();
     else renderQuestion();
   }
@@ -566,8 +585,8 @@
     const kind = state.view.mode === "marked" ? "marked" : state.view.mode === "notes" ? "notes" : "";
     if (!kind || !NOTES) return;
     flushNote();
-    const title = kind === "marked" ? "视频没讲" : "注释题目";
-    const lines = [`以下是病理学题库中${kind === "marked" ? "标记为视频没讲" : "记录过注释"}的题目，共 ${queue.length} 道。`, ""];
+    const title = kind === "marked" ? "视频没讲" : "做题笔记题目";
+    const lines = [`以下是病理学题库中${kind === "marked" ? "标记为视频没讲" : "记录过做题笔记"}的题目，共 ${queue.length} 道。`, ""];
     queue.forEach((question, index) => {
       const record = recordFor(question.id);
       const info = answerInfo(question);
@@ -579,7 +598,7 @@
       lines.push(status, displayAnswer(info.effective) || "未提供");
       if (entry?.note) lines.push(`修订说明：${entry.note}`);
       if (question.images?.length) lines.push(`题目配图：${question.images.map(image => `${image.alt || "配图"}${image.sourcePage ? `（原书第 ${image.sourcePage} 页）` : ""}`).join("；")}。图片未嵌入此文本导出。`);
-      if (record.note) lines.push("", `我的注释：${record.note.replace(/!\[[^\]]*\]\(img:[^)]+\)/g, "[图片]")}`);
+      if (record.note) lines.push("", `做题笔记：${record.note.replace(/!\[[^\]]*\]\(img:[^)]+\)/g, "[图片]")}`);
       lines.push("");
     });
     NOTES.showTextExport(lines.join("\n").trim(), `导出${title}（${queue.length}题）`);
@@ -690,14 +709,37 @@
       flushNote();
       const question = queue[currentIndex];
       changeRecord(question.id, { marked: !recordFor(question.id).marked });
-      rebuildQueue(question.id);
+      rebuildQueue(question.id, true);
     }
     else if (own(button.dataset, "mastered")) {
       flushNote();
       const question = queue[currentIndex];
       if (!question) return;
       changeRecord(question.id, { mastered: !recordFor(question.id).mastered });
-      rebuildQueue(question.id);
+      beginAttempt(question.id);
+      rebuildQueue(question.id, true);
+    }
+    else if (own(button.dataset, "disputed")) {
+      flushNote();
+      const question = queue[currentIndex];
+      if (!question) return;
+      changeRecord(question.id, { disputed: !recordFor(question.id).disputed });
+      rebuildQueue(question.id, true);
+    }
+    else if (own(button.dataset, "copyQuestion")) {
+      const question = queue[currentIndex];
+      const card = $("questionArea").querySelector(".sheet");
+      if (!question || !card) return;
+      const snapshot = window.PATHOLOGY_QUESTION_IMAGE.capture(card, question);
+      button.disabled = true;
+      button.textContent = "正在复制…";
+      window.PATHOLOGY_QUESTION_IMAGE.copy(snapshot).then(() => {
+        toast("题目图片已复制，可直接到另一个 AI 的输入框粘贴。");
+      }).catch(error => {
+        toast(error.name === "NotAllowedError" ? "无法写入剪贴板，请允许本站使用剪贴板后重试。" : error.message || "复制失败，请重试。");
+      }).finally(() => {
+        if (button.isConnected) { button.disabled = false; button.textContent = "复制题目图片"; }
+      });
     }
     else if (own(button.dataset, "sourcePages")) openSourcePages(queue[currentIndex]);
     else if (own(button.dataset, "answerScans")) openAnswerScans(queue[currentIndex]);
@@ -716,7 +758,7 @@
       renderSidebar(); renderQuestion();
     } else if (own(button.dataset, "submit")) submit();
     else if (own(button.dataset, "reveal")) { flushNote(); answerRevealed = true; renderQuestion(); }
-    else if (own(button.dataset, "retry")) { flushNote(); const question = queue[currentIndex]; changeRecord(question.id, { selected: [], text: "", submitted: false, result: null }); answerRevealed = false; renderSidebar(); renderQuestion(); }
+    else if (own(button.dataset, "retry")) { flushNote(); const question = queue[currentIndex]; beginAttempt(question.id, true); answerRevealed = false; renderSidebar(); renderQuestion(); }
     else if (own(button.dataset, "prev")) navigate(currentIndex - 1);
     else if (own(button.dataset, "next")) navigate(currentIndex + 1);
     else if (own(button.dataset, "jump")) navigate(Number(button.dataset.jump));
@@ -835,7 +877,7 @@
     if (event.key === "ArrowLeft") { event.preventDefault(); navigate(currentIndex - 1); }
     else if (event.key === "ArrowRight") { event.preventDefault(); navigate(currentIndex + 1); }
     else if (/^[1-9]$/.test(event.key)) { const option = queue[currentIndex]?.options?.[Number(event.key) - 1]; if (option) { event.preventDefault(); selectOption(String(option.key)); } }
-    else if (event.key === "Enter" && queue[currentIndex]?.type === "multiple" && !recordFor(queue[currentIndex].id).submitted && !answerRevealed) { event.preventDefault(); submit(); }
+    else if (event.key === "Enter" && queue[currentIndex]?.type === "multiple" && !activeRecord(queue[currentIndex].id).submitted && !answerRevealed) { event.preventDefault(); submit(); }
   });
   window.addEventListener("pagehide", () => flushNote());
   document.addEventListener("visibilitychange", () => { if (document.hidden) flushNote(); });
