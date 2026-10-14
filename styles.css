@@ -112,3 +112,54 @@
 .scan-dialog { width: min(1000px, 94vw); }
 @media(max-width:960px) { .app { grid-template-columns: 260px minmax(0,1fr); } }
 @media(max-width:760px) { .app { grid-template-columns: 1fr; } }
+
+/* Keep the question and its note in separate desktop scroll areas. */
+.app { grid-template-columns: 232px minmax(0, 1fr); }
+.brand { padding: 16px 12px 10px; flex-wrap: wrap; }
+.brand h1 { font-size: 18px; }
+.rail-section { padding-right: 12px; padding-left: 12px; }
+.chapter-heading { padding-right: 12px; padding-left: 12px; }
+.chapter-list { padding-right: 8px; padding-left: 8px; }
+.chapter-name { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.rail-footer { padding-right: 12px; padding-left: 12px; }
+.footer-tools { gap: 8px 12px; }
+.toolbar,.top { padding-right: 18px; padding-left: 18px; }
+.toolbar { gap: 10px; }
+.toolbar-controls { flex-wrap: wrap; gap: 7px 10px; }
+.stage { flex: 1; min-height: 0; overflow: hidden; padding: 16px; }
+.workspace-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, 1fr); gap: 16px; height: 100%; min-height: 0; }
+.question-pane,.note-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.question-scroll { flex: 1; min-height: 0; overflow: auto; padding: 1px 2px 14px; scrollbar-width: thin; }
+.scope-summary,.sheet,.question-map,.keyboard-hint,.study-footer { max-width: none; width: 100%; }
+.scope-summary { margin: 0 0 12px; }
+.sheet { box-sizing: border-box; margin: 0; padding: 24px; }
+.question-navigation { flex-shrink: 0; width: 100%; max-width: none; margin: 0; padding: 12px 2px 0; border-top: 1px solid var(--line); }
+.question-map { margin-top: 20px; }
+.note-pane { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--sheet); }
+.note-pane-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-shrink: 0; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.note-pane-header strong { color: var(--accent); font-size: 14px; font-weight: 600; }
+.note-pane-header span,.note-context { color: var(--muted); font-size: 11px; }
+.note-context { flex-shrink: 0; padding: 8px 16px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.note-pane-controls { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; flex-shrink: 0; padding: 9px 16px; }
+.note-pane-controls [hidden] { display: none; }
+.note-edit-tools { flex-shrink: 0; padding: 0 16px 8px; }
+.note-edit-tools .selection-hint { margin: 0; line-height: 1.6; }
+.note-content { flex: 1; min-height: 0; overflow: auto; padding: 14px 16px; overflow-wrap: anywhere; scrollbar-width: thin; }
+.note-pane .note-content { min-height: 0; border: 0; background: transparent; padding: 14px 16px; }
+.note-content > :first-child { margin-top: 0; }
+.note-content > :last-child { margin-bottom: 0; }
+.note-content img,.note-live-preview img { max-width: 100%; max-height: 360px; object-fit: contain; cursor: zoom-in; }
+.note-content pre,.note-live-preview pre { overflow: auto; padding: 10px; background: var(--bg); border-radius: 6px; }
+.note-editor { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: 7px; flex: 1; min-height: 0; padding: 0 16px 14px; }
+.note-edit-label,.note-preview-label { color: var(--muted); font-size: 11px; }
+.note-input { width: 100%; height: 100%; min-height: 0; resize: none; overflow: auto; background: var(--bg); }
+.note-live-preview { min-height: 0; overflow: auto; padding: 10px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); overflow-wrap: anywhere; scrollbar-width: thin; }
+.note-editor:not(.preview-only) .note-preview-label,.note-editor:not(.preview-only) .note-live-preview { display: none; }
+.note-editor.preview-only { grid-template-rows: minmax(0, 1fr); }
+.note-editor.preview-only .note-input,.note-editor.preview-only .note-edit-label,.note-editor.preview-only .note-preview-label { display: none; }
+.note-editor.preview-only .note-live-preview { min-height: 0; }
+.note-empty { color: var(--muted); font-size: 13px; }
+.note-preview > :first-child { margin-top: 0; }
+.note-preview > :last-child { margin-bottom: 0; }
+@media(min-width:1500px) { .app { grid-template-columns: 232px minmax(0, 1fr); } .stage { padding: 18px; } }
+@media(max-width:760px) { .workspace-layout { min-width: 1048px; } }

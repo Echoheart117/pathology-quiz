@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="病理学题库学习桌：按章节练习、复习错题、收藏题目和记录笔记。">
   <title>病理学刷题本</title>
-  <link rel="stylesheet" href="styles.css?v=20261013-pages1">
+  <link rel="stylesheet" href="styles.css?v=20261014-columns1">
 </head>
 <body>
   <a class="skip-link" href="#questionArea">跳到题目</a>
@@ -24,7 +24,21 @@
     <main class="main">
       <header class="top"><button class="menu icon" id="openMenu" aria-label="打开章节列表" aria-expanded="false" aria-controls="rail">☰ 章节</button><div class="crumb"><h2 id="chapterTitle">正在读取题库</h2><p id="chapterSubtitle">病理学 · 学习桌</p></div><span class="local-badge">本地学习</span></header>
       <div class="toolbar"><label class="search"><span aria-hidden="true">⌕</span><input type="search" id="search" placeholder="搜索题干、选项或题号" aria-label="搜索题干、选项或题号"><button class="text-button" id="clearSearch" hidden aria-label="清除搜索">清除</button></label><div class="toolbar-controls"><label>题型<select id="typeFilter"><option value="all">全部题型</option><option value="single">单选题</option><option value="multiple">多选题</option><option value="text">文字题</option></select></label><label>顺序<select id="order"><option value="sequential">顺序练习</option><option value="random">随机练习</option></select></label><button class="icon" id="reshuffle" hidden>重新打乱</button></div></div>
-      <div class="stage" id="stage"><div class="scope-summary" id="scopeSummary"></div><section id="questionArea" tabindex="-1" aria-label="当前题目"></section><nav id="questionNavigation" class="question-navigation" aria-label="上一题与下一题"></nav><section class="question-map" id="questionMap" aria-label="题号导航"></section><p class="keyboard-hint">键盘：← → 切换题目 · 数字键选择选项 · Enter 提交多选题</p><footer class="study-footer">保留原书答案与订正说明供核对。题目有争议时，请结合教材和授课内容判断。</footer></div>
+      <div class="stage" id="stage">
+        <div class="workspace-layout">
+          <section class="question-pane" aria-label="当前题目">
+            <div class="question-scroll" id="questionScroll" tabindex="-1">
+              <div class="scope-summary" id="scopeSummary"></div>
+              <section id="questionArea" aria-label="当前题目"></section>
+              <section class="question-map" id="questionMap" aria-label="题号导航"></section>
+              <p class="keyboard-hint">键盘：← → 切换题目 · 数字键选择选项 · Enter 提交多选题</p>
+              <footer class="study-footer">保留原书答案与订正说明供核对。题目有争议时，请结合教材和授课内容判断。</footer>
+            </div>
+            <nav id="questionNavigation" class="question-navigation" aria-label="上一题与下一题"></nav>
+          </section>
+          <aside class="note-pane" id="notePane" aria-label="当前题目注释"></aside>
+        </div>
+      </div>
     </main>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -45,6 +59,6 @@
   <script src="review-flags.js"></script>
   <script src="translations.js?v=20261013-translation1"></script>
   <script src="notes.js?v=20261013-notes2"></script>
-  <script src="app.js?v=20261013-pages1"></script>
+  <script src="app.js?v=20261014-columns1"></script>
 </body>
 </html>

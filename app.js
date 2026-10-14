@@ -138,6 +138,12 @@
     persist();
   }
 
+  // 题目卡片和右侧注释栏各自标记题目，读取输入内容时沿 DOM 向上查找最近的归属记录。
+  function questionIdFor(element) {
+    const owner = element?.closest("[data-question-id], [data-note-question-id]");
+    return owner?.dataset.questionId || owner?.dataset.noteQuestionId || "";
+  }
+
   function answerInfo(question) {
     const entry = corrections.entries && own(corrections.entries, question.id) ? corrections.entries[question.id] : null;
     const original = answerList(entry?.originalAnswer ?? question.originalAnswer);
@@ -219,6 +225,7 @@
     state.view.currentId = queue[currentIndex]?.id || "";
     persist();
     render();
+    $("questionScroll").scrollTop = 0;
   }
 
   function setFilter(name, value) {
@@ -228,13 +235,46 @@
     rebuildQueue();
   }
 
-  function noteMarkup(record) {
-    if (noteEditing) {
-      const preview = notePreviewMode ? NOTES.render(record.note) || '<p class="note-empty">（还没有内容）</p>' : '<p class="note-empty">编辑 Markdown 内容后，可以打开预览检查排版。</p>';
-      return `<div class="note-box editing"><div class="note-header"><strong>我的注释</strong><span id="noteStatus">${storageAvailable ? "边写边自动保存" : "临时保存，请导出记录"}</span><button class="text-button" data-note-preview aria-pressed="${notePreviewMode}">${notePreviewMode ? "编辑" : "预览"}</button><button class="text-button" data-note-done>完成</button></div><div class="note-tools"><button class="button" data-note-image>插入图片</button><button class="button" data-export-text>导出本题文本</button><span class="selection-hint">支持 Markdown；截图后可直接粘贴图片，也可拖入图片文件。</span></div><div class="note-editor${notePreviewMode ? " preview-only" : ""}"><textarea class="note-input" id="questionNote" placeholder="记录教材依据、容易混淆的知识点或仍需核对的问题……">${escape(record.note)}</textarea><div class="note-preview-label">笔记预览</div><div class="note-preview" id="notePreview">${preview}</div></div><input type="file" id="noteImageFile" accept="image/*" multiple hidden></div>`;
-    }
-    if (!record.note.trim()) return "";
-    return `<div class="note-box"><div class="note-header"><strong>我的注释</strong><span class="note-spacer"></span><button class="text-button" data-note-edit>编辑注释</button></div><div class="note-preview" id="notePreview">${NOTES ? NOTES.render(record.note) : escape(record.note)}</div></div>`;
+  /*
+   * 右栏始终保留题目注释的标题、题目信息和操作入口。
+   * 编辑时只显示文本框；切换到预览后显示渲染内容，两个状态共用同一份记录。
+   */
+  function noteMarkup(record, question) {
+    const emptyNote = '<p class="note-empty">这道题还没有注释。点击“编辑”记录教材依据或待核对的问题。</p>';
+    const renderedNote = record.note.trim() && NOTES ? NOTES.render(record.note) : record.note.trim() ? escape(record.note) : emptyNote;
+    const editorNote = record.note.trim() ? renderedNote : '<p class="note-empty">这道题还没有注释。</p>';
+    const status = storageAvailable ? "边写边自动保存" : "临时保存，请导出记录";
+    const viewButton = noteEditing
+      ? `<button class="text-button" data-note-preview aria-pressed="${notePreviewMode}">${notePreviewMode ? "编辑" : "预览"}</button><button class="text-button" data-note-done>完成</button>`
+      : '<button class="text-button" data-note-edit>编辑</button>';
+
+    return `
+      <header class="note-pane-header">
+        <strong>我的注释</strong><span id="noteStatus">${status}</span>
+      </header>
+      <div class="note-context">${escape(question.chapterName)} · ${question.language === "en" ? "英文" : "中文"}第 ${escape(question.number)} 题</div>
+      <div class="note-pane-controls">
+        ${viewButton}
+        <button class="button" data-note-image ${noteEditing ? "" : "hidden"}>插入图片</button>
+        <button class="button" data-export-text>导出本题文本</button>
+      </div>
+      <div class="note-edit-tools" ${noteEditing ? "" : "hidden"}>
+        <span class="selection-hint">支持 Markdown；可粘贴截图或拖入图片文件。</span>
+      </div>
+      <div class="note-content note-preview" id="notePreview" ${noteEditing ? "hidden" : ""}>${renderedNote}</div>
+      <div class="note-editor${notePreviewMode ? " preview-only" : ""}" ${noteEditing ? "" : "hidden"}>
+        <label class="note-edit-label" for="questionNote">编辑 Markdown 注释</label>
+        <textarea class="note-input" id="questionNote" placeholder="记录教材依据、容易混淆的知识点或仍需核对的问题……">${escape(record.note)}</textarea>
+        <div class="note-preview-label">Markdown 预览</div>
+        <div class="note-live-preview note-preview" id="noteLivePreview">${editorNote}</div>
+      </div>
+      <input type="file" id="noteImageFile" accept="image/*" multiple hidden>`;
+  }
+
+  // 找到当前显示模式实际使用的滚动区，切换编辑和预览时保持各自的滚动行为。
+  function activeNoteScroller() {
+    if (!noteEditing) return $("notePreview");
+    return notePreviewMode ? $("noteLivePreview") : $("questionNote");
   }
 
   function renderSidebar() {
@@ -306,11 +346,17 @@
 
   function renderQuestion() {
     const question = queue[currentIndex];
+    const previousQuestionId = $("notePane").dataset.noteQuestionId || "";
+    const previousNoteScroll = activeNoteScroller()?.scrollTop || 0;
     if (!question) {
       const message = state.view.mode === "wrong" ? "当前范围没有错题。可以先在全部题目中练习，答错的题目会自动加入这里。" : state.view.mode === "star" ? "当前范围没有收藏。练习时点击题目右上角的收藏按钮即可加入。" : state.view.mode === "notes" ? "当前范围没有笔记。在题目下方记录你的思考，之后可在这里复习。" : "当前条件下没有找到题目。可以清除搜索或放宽章节、语言和题型范围。";
       $("questionArea").innerHTML = `<div class="empty"><h3>这里暂时没有题目</h3><p>${message}</p><button class="button" data-reset-filters>查看全部题目</button></div>`;
+      $("notePane").dataset.noteQuestionId = "";
+      $("notePane").innerHTML = '<header class="note-pane-header"><strong>我的注释</strong></header><div class="note-context">当前筛选范围内没有题目</div><div class="note-content"><p class="note-empty">没有当前题目可供记录注释。</p></div>';
       $("questionNavigation").innerHTML = "";
       $("questionMap").innerHTML = "";
+      $("questionScroll").scrollTop = 0;
+      $("notePane .note-content")?.scrollTo(0, 0);
       return;
     }
     const record = recordFor(question.id);
@@ -330,9 +376,16 @@
       return `<button class="option${selected ? " selected" : ""}${correct ? " correct" : ""}${wrong ? " wrong" : ""}" data-option="${escape(key)}" aria-pressed="${selected}" ${record.submitted || answerRevealed ? "disabled" : ""}><span class="option-key">${escape(key)}</span><span class="option-text">${translatedText(option.text, question, key)}</span><span class="option-mark">${mark}</span></button>`;
     }).join("")}</div>` : `<label class="selection-hint" for="writtenAnswer">你的作答</label><textarea class="answer-input" id="writtenAnswer" placeholder="在这里写下答案或思考……" ${record.submitted || answerRevealed ? "disabled" : ""}>${escape(record.text)}</textarea>`;
     const verdict = record.submitted ? `<div class="verdict ${outcome || "neutral"}" role="status"><strong>${outcome === "correct" ? "回答正确" : outcome === "wrong" ? "本题回答错误" : "已记录作答 · 本题不计分"}</strong><small>${outcome === "neutral" ? escape(info.reason) : `你的答案：${escape(displayAnswer(record.selected))}　参考答案：${escape(displayAnswer(info.effective))}`}</small></div>` : answerRevealed ? '<div class="verdict"><strong>已显示参考答案</strong><small>本次查看不计为作答。点击重新作答后可以继续练习。</small></div>' : "";
-    $("questionArea").innerHTML = `<article class="sheet" data-question-id="${escape(question.id)}"><div class="question-head"><span class="tag">${escape(typeNames[question.type] || "待核对题型")}</span><span class="tag">${question.language === "en" ? "English" : "中文"}</span><span class="question-number">第 ${escape(question.number)} 题</span><button class="icon mark-button${record.marked ? " is-marked" : ""}" data-marked aria-pressed="${record.marked}" title="标记课程视频尚未讲到">${record.marked ? "● 视频没讲" : "○ 视频没讲"}</button><button class="icon note-toggle" data-note-toggle aria-pressed="${noteEditing}">${record.note.trim() ? "✎ 有注释" : "✎ 注释"}</button><button class="icon source-button" data-source-open>看原页</button><span class="spacer"></span><button class="icon" data-star aria-pressed="${record.star}">${record.star ? "★ 已收藏" : "☆ 收藏"}</button></div>${hasTranslation(question) ? `<div class="translation-control"><button class="button" data-translation aria-pressed="${translationVisible}">${translationVisible ? "隐藏中文翻译" : "显示中文翻译"}</button></div>` : ""}${notices.length ? `<div class="notice">${escape(notices.join("\n"))}</div>` : ""}${question.sharedStem ? `<div class="shared-stem">${translatedText(question.sharedStem, question, "sharedStem")}</div>` : ""}<h3 class="stem">${translatedText(question.stem, question, "stem")}</h3>${questionImagesMarkup(question)}${selectionInput}${!revealed ? `<p class="selection-hint">${question.type === "single" && options.length ? "点击一个选项后自动记录并判题。" : question.type === "multiple" ? "请选择所有符合题意的选项，再提交答案。" : "完成作答后提交，再查看参考答案。"}</p>` : ""}<div class="actions">${!revealed && (question.type !== "single" || !options.length) ? `<button class="button primary" data-submit ${options.length && !record.selected.length ? "disabled" : ""}>提交答案</button>` : ""}${!revealed ? '<button class="button" data-reveal>查看答案</button>' : '<button class="button" data-retry>重新作答</button>'}</div>${verdict}${revealed ? sourcesMarkup(question, info) : ""}${noteMarkup(record)}</article>`;
-    if (NOTES) NOTES.hydrate($("notePreview"));
+    $("questionArea").innerHTML = `<article class="sheet" data-question-id="${escape(question.id)}"><div class="question-head"><span class="tag">${escape(typeNames[question.type] || "待核对题型")}</span><span class="tag">${question.language === "en" ? "English" : "中文"}</span><span class="question-number">第 ${escape(question.number)} 题</span><button class="icon mark-button${record.marked ? " is-marked" : ""}" data-marked aria-pressed="${record.marked}" title="标记课程视频尚未讲到">${record.marked ? "● 视频没讲" : "○ 视频没讲"}</button><button class="icon note-toggle" data-note-toggle aria-pressed="${noteEditing}">${record.note.trim() ? "✎ 有注释" : "✎ 注释"}</button><button class="icon source-button" data-source-open>看原页</button><span class="spacer"></span><button class="icon" data-star aria-pressed="${record.star}">${record.star ? "★ 已收藏" : "☆ 收藏"}</button></div>${hasTranslation(question) ? `<div class="translation-control"><button class="button" data-translation aria-pressed="${translationVisible}">${translationVisible ? "隐藏中文翻译" : "显示中文翻译"}</button></div>` : ""}${notices.length ? `<div class="notice">${escape(notices.join("\n"))}</div>` : ""}${question.sharedStem ? `<div class="shared-stem">${translatedText(question.sharedStem, question, "sharedStem")}</div>` : ""}<h3 class="stem">${translatedText(question.stem, question, "stem")}</h3>${questionImagesMarkup(question)}${selectionInput}${!revealed ? `<p class="selection-hint">${question.type === "single" && options.length ? "点击一个选项后自动记录并判题。" : question.type === "multiple" ? "请选择所有符合题意的选项，再提交答案。" : "完成作答后提交，再查看参考答案。"}</p>` : ""}<div class="actions">${!revealed && (question.type !== "single" || !options.length) ? `<button class="button primary" data-submit ${options.length && !record.selected.length ? "disabled" : ""}>提交答案</button>` : ""}${!revealed ? '<button class="button" data-reveal>查看答案</button>' : '<button class="button" data-retry>重新作答</button>'}</div>${verdict}${revealed ? sourcesMarkup(question, info) : ""}</article>`;
+    $("notePane").dataset.noteQuestionId = question.id;
+    $("notePane").innerHTML = noteMarkup(record, question);
+    if (NOTES) NOTES.hydrate($("notePane"));
     $("questionNavigation").innerHTML = `<button class="button" data-prev ${currentIndex === 0 ? "disabled" : ""}>← 上一题</button><span class="spacer"></span><span class="position">${currentIndex + 1} / ${queue.length}</span><span class="spacer"></span><button class="button primary" data-next ${currentIndex >= queue.length - 1 ? "disabled" : ""}>下一题 →</button>`;
+    if (previousQuestionId === question.id) activeNoteScroller().scrollTop = previousNoteScroll;
+    else {
+      $("questionScroll").scrollTop = 0;
+      activeNoteScroller()?.scrollTo(0, 0);
+    }
     renderMap();
   }
 
@@ -363,13 +416,13 @@
     renderQuestion();
   }
 
-  function flushNote(noteInput = $("questionNote"), answer = $("writtenAnswer"), questionId = $("questionArea").querySelector("[data-question-id]")?.dataset.questionId) {
+  function flushNote(noteInput = $("questionNote"), answer = $("writtenAnswer"), questionId = questionIdFor(noteInput) || questionIdFor(answer) || $("questionArea").querySelector("[data-question-id]")?.dataset.questionId) {
     clearTimeout(noteSaveTimer);
     if (questionId && questionById.has(questionId) && noteInput && noteInput.value !== recordFor(questionId).note) changeRecord(questionId, { note: noteInput.value });
     if (questionId && questionById.has(questionId) && answer && answer.value !== recordFor(questionId).text) changeRecord(questionId, { text: answer.value });
-    if (noteInput?.isConnected && $("notePreview")) {
-      $("notePreview").innerHTML = NOTES ? NOTES.render(noteInput.value) : escape(noteInput.value);
-      if (NOTES) NOTES.hydrate($("notePreview"));
+    if (noteInput?.isConnected && $("noteLivePreview")) {
+      $("noteLivePreview").innerHTML = NOTES ? NOTES.render(noteInput.value) : escape(noteInput.value);
+      if (NOTES) NOTES.hydrate($("noteLivePreview"));
     }
   }
 
@@ -387,7 +440,8 @@
     mapPage = Math.floor(index / PAGE_SIZE);
     persist();
     renderQuestion();
-    $("stage").scrollTop = 0;
+    $("questionScroll").scrollTop = 0;
+    activeNoteScroller()?.scrollTo(0, 0);
   }
 
   function submit() {
@@ -529,6 +583,11 @@
     NOTES.showTextExport(lines.join("\n").trim(), `导出${title}（${queue.length}题）`);
   }
 
+  /*
+   * 图片存储可能在用户切题或重新渲染后才完成。
+   * 只有当前右栏仍属于原题时，才刷新可见编辑器；否则只更新原题记录。
+   * 同题重新渲染时先读取新编辑器，避免覆盖异步期间新增的文字。
+   */
   async function insertNoteImages(files, questionId, editor) {
     if (!NOTES || !questionId || !editor) return;
     const images = [...files].filter(file => file && /^image\//i.test(file.type));
@@ -537,17 +596,23 @@
     try {
       for (const file of images) {
         const imageId = await NOTES.storeImage(file);
+        const isCurrentQuestion = $("notePane").dataset.noteQuestionId === questionId;
+        const currentEditor = isCurrentQuestion ? $("notePane").querySelector("#questionNote") : null;
+        if (currentEditor) flushNote(currentEditor, null, questionId);
         const current = recordFor(questionId).note;
         const insertion = `![${file.name.replace(/[\[\]]/g, "")}](img:${imageId})`;
         const note = current ? `${current}${current.endsWith("\n") ? "" : "\n"}${insertion}` : insertion;
         changeRecord(questionId, { note });
-        if (editor.isConnected && editor.closest("[data-question-id]")?.dataset.questionId === questionId) {
-          editor.value = note;
-          $("notePreview").innerHTML = NOTES.render(note);
-          NOTES.hydrate($("notePreview"));
+        if (isCurrentQuestion) {
+          if (currentEditor) currentEditor.value = note;
+          const preview = $("notePane").querySelector(noteEditing ? "#noteLivePreview" : "#notePreview");
+          if (preview) {
+            preview.innerHTML = NOTES.render(note);
+            NOTES.hydrate(preview);
+          }
         }
       }
-      if (editor.isConnected && $("noteStatus")) $("noteStatus").textContent = "图片与笔记已保存";
+      if ($("notePane").dataset.noteQuestionId === questionId && $("noteStatus")) $("noteStatus").textContent = "图片与笔记已保存";
       toast(`${images.length} 张图片已加入笔记并保存在当前浏览器。`);
     } catch (error) { toast(`无法插入图片：${error.message || "请检查图片格式和浏览器存储空间。"}`); }
   }
@@ -585,29 +650,29 @@
       else updateAnswerPage(adjusted);
     }
   });
-  $("questionArea").addEventListener("change", async event => {
+  $("notePane").addEventListener("change", async event => {
     if (event.target.id !== "noteImageFile") return;
     const files = [...event.target.files];
     event.target.value = "";
-    const card = event.target.closest("[data-question-id]");
-    const questionId = card?.dataset.questionId;
+    const questionId = questionIdFor(event.target);
+    const card = event.target.closest("[data-note-question-id]");
     const editor = card?.querySelector("#questionNote");
     insertNoteImages(files || [], questionId, editor);
   });
-  $("questionArea").addEventListener("paste", event => {
+  $("notePane").addEventListener("paste", event => {
     if (event.target.id !== "questionNote") return;
     const files = [...(event.clipboardData?.items || [])].map(item => item.kind === "file" ? item.getAsFile() : null).filter(Boolean);
     if (!files.length) return;
     event.preventDefault();
-    insertNoteImages(files, event.target.closest("[data-question-id]")?.dataset.questionId, event.target);
+    insertNoteImages(files, questionIdFor(event.target), event.target);
   });
-  $("questionArea").addEventListener("dragover", event => { if (event.target.closest("#questionNote")) { event.preventDefault(); event.target.closest("#questionNote").classList.add("drag"); } });
-  $("questionArea").addEventListener("dragleave", event => { if (event.target.closest("#questionNote")) event.target.closest("#questionNote").classList.remove("drag"); });
-  $("questionArea").addEventListener("drop", event => {
+  $("notePane").addEventListener("dragover", event => { if (event.target.closest("#questionNote")) { event.preventDefault(); event.target.closest("#questionNote").classList.add("drag"); } });
+  $("notePane").addEventListener("dragleave", event => { if (event.target.closest("#questionNote")) event.target.closest("#questionNote").classList.remove("drag"); });
+  $("notePane").addEventListener("drop", event => {
     const editor = event.target.closest("#questionNote");
     if (!editor) return;
     event.preventDefault(); editor.classList.remove("drag");
-    insertNoteImages(event.dataTransfer?.files || [], editor.closest("[data-question-id]")?.dataset.questionId, editor);
+    insertNoteImages(event.dataTransfer?.files || [], questionIdFor(editor), editor);
   });
 
   document.addEventListener("click", event => {
@@ -675,11 +740,11 @@
     if (event.target.id !== "questionNote" && event.target.id !== "writtenAnswer") return;
     clearTimeout(noteSaveTimer);
     const input = event.target;
-    const card = input.closest("[data-question-id]");
-    const questionId = card?.dataset.questionId;
+    const questionId = questionIdFor(input);
     if (input.id === "questionNote" && $("notePreview")) {
-      $("notePreview").innerHTML = NOTES ? NOTES.render(input.value) : escape(input.value);
-      if (NOTES) NOTES.hydrate($("notePreview"));
+      const livePreview = $("noteLivePreview");
+      livePreview.innerHTML = NOTES ? NOTES.render(input.value) : escape(input.value);
+      if (NOTES) NOTES.hydrate(livePreview);
     }
     if ($("noteStatus")) $("noteStatus").textContent = "正在保存……";
     noteSaveTimer = setTimeout(() => {
