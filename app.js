@@ -13,13 +13,17 @@
   const displayAnswer = value => answerList(value).join("、") || "未提供明确答案";
   const data = window.PATHOLOGY_DATA;
   const corrections = window.PATHOLOGY_CORRECTIONS || { entries: {}, chapters: {} };
-  const explanations = window.PATHOLOGY_EXPLANATIONS || { entries: {} };
+  const reviewFlags = window.PATHOLOGY_REVIEW_FLAGS || { entries: {} };
+  const translations = window.PATHOLOGY_TRANSLATIONS || { entries: {}, glossary: {} };
+  const glossary = new Map(Object.entries(translations.glossary).map(([term, meaning]) => [term.toLowerCase(), meaning]));
+  const termPattern = glossary.size ? new RegExp(`(?<![A-Za-z])(?:${[...glossary.keys()].sort((a, b) => b.length - a.length).map(term => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?![A-Za-z0-9])`, "gi") : null;
   let state = { records: {}, view: { chapterId: "all", language: "all", type: "all", mode: "all", order: "sequential", search: "", currentId: "", seed: Date.now() }, theme: "light", lastQuestionId: "" };
   let storageAvailable = true;
   let queue = [];
   let currentIndex = 0;
   let mapPage = 0;
   let answerRevealed = false;
+  let translationVisible = false;
   let noteSaveTimer;
   let searchTimer;
   let toastTimer;
@@ -124,7 +128,7 @@
       else if (!options.length || effective.some(key => !keys.includes(key))) reason = "答案与已录入选项尚未对应，本题记录作答，但不计入正确率。";
       else if (question.type === "single" && effective.length !== 1) reason = "单选题的参考答案包含多个选项，尚需核对，本题不计入正确率。";
       else if (!["single", "multiple"].includes(question.type)) reason = "此题的题型尚需核对，本题不计入正确率。";
-      else if (explanations.entries?.[question.id]?.status === "needs_review") reason = "整理中文解析时发现此题仍有疑点，参考答案待复核，本题暂不计分。";
+      else if (reviewFlags.entries?.[question.id]?.status === "needs_review") reason = "本题参考答案待复核，暂不计分。";
     }
     return { entry, original, effective, gradeable: !reason, reason };
   }
@@ -184,6 +188,7 @@
     currentIndex = preferredIndex >= 0 ? preferredIndex : 0;
     mapPage = Math.floor(currentIndex / PAGE_SIZE);
     answerRevealed = false;
+    translationVisible = false;
     state.view.currentId = queue[currentIndex]?.id || "";
     persist();
     render();
@@ -227,20 +232,36 @@
   }
 
 
-  function explanationMarkup(question) {
-    if (question.language !== "en") return "";
-    const explanation = explanations.entries?.[question.id];
-    if (!explanation?.text) return "";
-    const paragraphs = explanation.text.split(/\n+/).filter(Boolean).map(text => `<p>${escape(text)}</p>`).join("");
-    const references = (explanation.references || []).filter(reference => {
-      try { return new URL(reference.url).protocol === "https:"; } catch { return false; }
-    }).map(reference => `<a href="${escape(reference.url)}" target="_blank" rel="noopener noreferrer">${escape(reference.title)} ↗</a>`).join("");
-    return `<section class="explanation" aria-label="中文解析"><h3>中文解析${explanation.status === "needs_review" ? '<span class="explanation-status">本题待复核</span>' : ""}</h3>${paragraphs}${references ? `<details class="explanation-references"><summary>知识点参考资料</summary><div>${references}</div></details>` : ""}<small class="source-description">解析由 AI 辅助整理，尚未经医学教师逐题审定。参考资料用于说明知识点，并非本题的官方解答。</small></section>`;
+  function hasTranslation(question) {
+    if (translations.entries[question.id]) return true;
+    return termPattern && [question.stem, question.sharedStem, ...(question.options || []).map(option => option.text)]
+      .some(text => typeof text === "string" && [...text.matchAll(termPattern)].length > 0);
+  }
+
+  function translatedText(text, question, field) {
+    const original = String(text || "");
+    if (!translationVisible) return escape(original);
+    const entry = translations.entries[question.id];
+    const fullTranslation = field === "stem" || field === "sharedStem" ? entry?.[field] : entry?.options?.[field];
+    if (fullTranslation) {
+      if (original.includes(fullTranslation)) return escape(original);
+      const longSentence = original.length > 70 || original.trim().split(/\s+/).length > 8;
+      return `${escape(original)}<span class="${longSentence ? "sentence-translation" : "term-translation"}" lang="zh-CN">${longSentence ? escape(fullTranslation) : `（${escape(fullTranslation)}）`}</span>`;
+    }
+    if (!termPattern) return escape(original);
+    let result = "";
+    let position = 0;
+    for (const match of original.matchAll(termPattern)) {
+      result += escape(original.slice(position, match.index)) + escape(match[0]);
+      result += `<span class="term-translation" lang="zh-CN">（${escape(glossary.get(match[0].toLowerCase()))}）</span>`;
+      position = match.index + match[0].length;
+    }
+    return result + escape(original.slice(position));
   }
 
   function sourcesMarkup(question, info) {
     const status = info.entry?.status;
-    const label = explanations.entries?.[question.id]?.status === "needs_review" ? "参考答案 · 待复核，本题不计分" : status === "corrected" ? "修正版答案 · 本次判分采用" : status === "disputed" ? "修正版候选 · 存在争议" : status === "unclear" ? "修正版 · 答案不明" : "练习参考 · 采用原书答案";
+    const label = reviewFlags.entries?.[question.id]?.status === "needs_review" ? "参考答案 · 待复核，本题不计分" : status === "corrected" ? "修正版答案 · 本次判分采用" : status === "disputed" ? "修正版候选 · 存在争议" : status === "unclear" ? "修正版 · 答案不明" : "练习参考 · 采用原书答案";
     const note = info.entry?.note || "修正版未列出此题的单独修改。请结合教材和授课内容核对。";
     return `<section class="sources" aria-label="答案来源"><h3>答案来源与核对</h3><div class="answer-comparison"><div class="answer-card"><p>原书答案</p><strong>${escape(displayAnswer(info.original))}</strong></div><div class="answer-card"><p>${escape(label)}</p><strong>${escape(status === "unclear" ? "尚未确定" : displayAnswer(info.effective))}</strong></div></div><p class="correction-note">${escape(note)}</p><p class="source-description">${question.printedPage ? `原书印刷页码：${escape(question.printedPage)}。` : ""}PDF 页码按文件中的页面顺序计数，与印刷页码可能不同。修订说明来自答案整理资料。</p></section>`;
   }
@@ -268,10 +289,10 @@
       const correct = revealed && info.gradeable && info.effective.includes(key);
       const wrong = record.submitted && info.gradeable && selected && !correct;
       const mark = correct ? "参考答案" : wrong ? "你的选择" : selected ? "已选择" : "";
-      return `<button class="option${selected ? " selected" : ""}${correct ? " correct" : ""}${wrong ? " wrong" : ""}" data-option="${escape(key)}" aria-pressed="${selected}" ${record.submitted || answerRevealed ? "disabled" : ""}><span class="option-key">${escape(key)}</span><span class="option-text">${escape(option.text)}</span><span class="option-mark">${mark}</span></button>`;
+      return `<button class="option${selected ? " selected" : ""}${correct ? " correct" : ""}${wrong ? " wrong" : ""}" data-option="${escape(key)}" aria-pressed="${selected}" ${record.submitted || answerRevealed ? "disabled" : ""}><span class="option-key">${escape(key)}</span><span class="option-text">${translatedText(option.text, question, key)}</span><span class="option-mark">${mark}</span></button>`;
     }).join("")}</div>` : `<label class="selection-hint" for="writtenAnswer">你的作答</label><textarea class="answer-input" id="writtenAnswer" placeholder="在这里写下答案或思考……" ${record.submitted || answerRevealed ? "disabled" : ""}>${escape(record.text)}</textarea>`;
     const verdict = record.submitted ? `<div class="verdict ${outcome || "neutral"}" role="status"><strong>${outcome === "correct" ? "回答正确" : outcome === "wrong" ? "本题回答错误" : "已记录作答 · 本题不计分"}</strong><small>${outcome === "neutral" ? escape(info.reason) : `你的答案：${escape(displayAnswer(record.selected))}　参考答案：${escape(displayAnswer(info.effective))}`}</small></div>` : answerRevealed ? '<div class="verdict"><strong>已显示参考答案</strong><small>本次查看不计为作答。点击重新作答后可以继续练习。</small></div>' : "";
-    $("questionArea").innerHTML = `<article class="sheet" data-question-id="${escape(question.id)}"><div class="question-head"><span class="tag">${escape(typeNames[question.type] || "待核对题型")}</span><span class="tag">${question.language === "en" ? "English" : "中文"}</span><span class="question-number">第 ${escape(question.number)} 题</span><span class="spacer"></span><button class="icon" data-star aria-pressed="${record.star}">${record.star ? "★ 已收藏" : "☆ 收藏"}</button></div>${notices.length ? `<div class="notice">${escape(notices.join("\n"))}</div>` : ""}${question.sharedStem ? `<div class="shared-stem">${escape(question.sharedStem)}</div>` : ""}<h3 class="stem">${escape(question.stem)}</h3>${questionImagesMarkup(question)}${selectionInput}${!revealed ? `<p class="selection-hint">${question.type === "single" && options.length ? "点击一个选项后自动记录并判题。" : question.type === "multiple" ? "请选择所有符合题意的选项，再提交答案。" : "完成作答后提交，再查看参考答案。"}</p>` : ""}<div class="actions">${!revealed && (question.type !== "single" || !options.length) ? `<button class="button primary" data-submit ${options.length && !record.selected.length ? "disabled" : ""}>提交答案</button>` : ""}${!revealed ? '<button class="button" data-reveal>查看答案</button>' : '<button class="button" data-retry>重新作答</button>'}</div>${verdict}${revealed ? explanationMarkup(question) + sourcesMarkup(question, info) : ""}<div class="note-box"><div class="note-header"><label for="questionNote">我的笔记</label><span id="noteStatus">${storageAvailable ? "输入后自动保存" : "临时保存，请导出记录"}</span></div><textarea class="note-input" id="questionNote" placeholder="记录教材依据、容易混淆的知识点或仍需核对的问题……">${escape(record.note)}</textarea></div></article>`;
+    $("questionArea").innerHTML = `<article class="sheet" data-question-id="${escape(question.id)}"><div class="question-head"><span class="tag">${escape(typeNames[question.type] || "待核对题型")}</span><span class="tag">${question.language === "en" ? "English" : "中文"}</span><span class="question-number">第 ${escape(question.number)} 题</span><span class="spacer"></span><button class="icon" data-star aria-pressed="${record.star}">${record.star ? "★ 已收藏" : "☆ 收藏"}</button></div>${hasTranslation(question) ? `<div class="translation-control"><button class="button" data-translation aria-pressed="${translationVisible}">${translationVisible ? "隐藏中文翻译" : "显示中文翻译"}</button></div>` : ""}${notices.length ? `<div class="notice">${escape(notices.join("\n"))}</div>` : ""}${question.sharedStem ? `<div class="shared-stem">${translatedText(question.sharedStem, question, "sharedStem")}</div>` : ""}<h3 class="stem">${translatedText(question.stem, question, "stem")}</h3>${questionImagesMarkup(question)}${selectionInput}${!revealed ? `<p class="selection-hint">${question.type === "single" && options.length ? "点击一个选项后自动记录并判题。" : question.type === "multiple" ? "请选择所有符合题意的选项，再提交答案。" : "完成作答后提交，再查看参考答案。"}</p>` : ""}<div class="actions">${!revealed && (question.type !== "single" || !options.length) ? `<button class="button primary" data-submit ${options.length && !record.selected.length ? "disabled" : ""}>提交答案</button>` : ""}${!revealed ? '<button class="button" data-reveal>查看答案</button>' : '<button class="button" data-retry>重新作答</button>'}</div>${verdict}${revealed ? sourcesMarkup(question, info) : ""}<div class="note-box"><div class="note-header"><label for="questionNote">我的笔记</label><span id="noteStatus">${storageAvailable ? "输入后自动保存" : "临时保存，请导出记录"}</span></div><textarea class="note-input" id="questionNote" placeholder="记录教材依据、容易混淆的知识点或仍需核对的问题……">${escape(record.note)}</textarea></div></article>`;
     $("questionNavigation").innerHTML = `<button class="button" data-prev ${currentIndex === 0 ? "disabled" : ""}>← 上一题</button><span class="spacer"></span><span class="position">${currentIndex + 1} / ${queue.length}</span><span class="spacer"></span><button class="button primary" data-next ${currentIndex >= queue.length - 1 ? "disabled" : ""}>下一题 →</button>`;
     renderMap();
   }
@@ -316,6 +337,7 @@
     flushNote();
     currentIndex = index;
     answerRevealed = false;
+    translationVisible = false;
     state.view.currentId = queue[index].id;
     state.lastQuestionId = queue[index].id;
     mapPage = Math.floor(index / PAGE_SIZE);
@@ -364,6 +386,7 @@
     else if (button.dataset.language) setFilter("language", button.dataset.language);
     else if (button.dataset.chapter) { setFilter("chapterId", button.dataset.chapter); closeMenu(); }
     else if (own(button.dataset, "option")) selectOption(button.dataset.option);
+    else if (own(button.dataset, "translation")) { flushNote(); translationVisible = !translationVisible; renderQuestion(); }
     else if (own(button.dataset, "star")) {
       flushNote();
       const question = queue[currentIndex];

@@ -6,17 +6,14 @@
 @media(max-width:760px){.app{grid-template-columns:1fr;min-height:0}.rail{position:fixed;inset:0 auto 0 0;width:min(310px,87vw);z-index:20;transform:translateX(-105%);transition:transform .18s ease;padding-top:env(safe-area-inset-top)}.rail.open{transform:none;box-shadow:10px 0 30px rgba(0,0,0,.16)}.menu,.close-menu{display:block}.close-menu{margin-left:auto;font-size:20px;line-height:1}.top{padding:14px 16px;gap:10px}.crumb h2{font-size:17px}.crumb p{font-size:11px}.local-badge{display:none}.toolbar{padding:11px 16px;gap:9px}.search{max-width:none;flex-basis:100%}.toolbar-controls{gap:10px;width:100%}.toolbar-controls label{font-size:11px}.stage{padding:15px 14px 25px}.sheet{padding:19px 17px;border-radius:10px}.stem{font-size:17px;line-height:1.9}.question-head{gap:6px}.option{padding:10px;gap:9px;font-size:14px}.option-key{width:25px;height:25px}.option-mark{font-size:10px}.scope-summary{font-size:11px}.answer-comparison{gap:8px}.answer-card{padding:9px}.answer-card strong{font-size:14px}.map-legend{gap:7px}.keyboard-hint{display:none}.question-navigation .button{padding:7px 12px}.question-map{margin-top:20px}.brand p{font-size:11px}.question-number{font-size:11px}.image-dialog{width:96vw}.image-scroll{padding:7px}.overview{margin-bottom:17px}.storage-warning{padding:7px 12px;line-height:1.6}body.has-storage-warning .app{height:calc(100dvh - 78px)}}
 @media(prefers-reduced-motion:reduce){.rail{transition:none}}
 .question-image{max-width:100%;margin:16px 0 20px;text-align:center}.question-image img{display:block;max-width:100%;max-height:520px;height:auto;margin:auto;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#fff}.question-image figcaption{margin-top:6px;color:var(--muted);font-size:11px}
-.explanation {
-  margin-top: 24px;
-  padding: 22px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--sheet);
+
+.translation-control { margin: 10px 0 20px; }
+.term-translation { color: var(--accent); font-size: .92em; }
+.sentence-translation {
+  display: block;
+  margin-top: 8px;
+  color: var(--accent);
+  font-size: .9em;
+  font-weight: 400;
+  line-height: 1.8;
 }
-.explanation h3 { margin: 0 0 14px; font-size: 18px; }
-.explanation p { line-height: 1.9; margin: 12px 0; overflow-wrap: anywhere; }
-.explanation-status { font-size: 12px; font-weight: 400; margin-left: 12px; color: var(--muted); }
-.explanation-references { margin: 16px 0; }
-.explanation-references summary { cursor: pointer; }
-.explanation-references a { display: block; overflow-wrap: anywhere; margin-top: 10px; }
-.explanation .source-description { display: block; margin-top: 14px; }
