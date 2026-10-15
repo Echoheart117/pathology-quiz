@@ -871,11 +871,24 @@
   });
 
   document.addEventListener("keydown", event => {
+    if (event.isComposing || event.keyCode === 229 || event.repeat) return;
     if (event.target.closest("dialog[open]")) return;
     if (event.key === "Escape") { closeMenu(); return; }
+    if (noteEditing && event.ctrlKey && !event.altKey && !event.metaKey && event.key === "Enter" && event.target.closest("#notePane")) {
+      event.preventDefault();
+      $("notePane").querySelector("[data-note-done]")?.click();
+      $("questionArea").querySelector("[data-note-toggle]")?.focus();
+      return;
+    }
     if ($("rail").classList.contains("open") || event.ctrlKey || event.altKey || event.metaKey || event.target.closest("input,textarea,select,[contenteditable]")) return;
-    if (event.key === "ArrowLeft") { event.preventDefault(); navigate(currentIndex - 1); }
-    else if (event.key === "ArrowRight") { event.preventDefault(); navigate(currentIndex + 1); }
+    const key = event.key.toLowerCase();
+    if (event.key === "ArrowLeft" || key === "q") { event.preventDefault(); navigate(currentIndex - 1); }
+    else if (event.key === "ArrowRight" || key === "e") { event.preventDefault(); navigate(currentIndex + 1); }
+    else if (key === "w" || key === "r" || key === "t") {
+      event.preventDefault();
+      const action = key === "w" ? "[data-mastered]" : key === "r" ? "[data-note-toggle]" : "[data-source-open]";
+      $("questionArea").querySelector(action)?.click();
+    }
     else if (/^[1-9]$/.test(event.key)) { const option = queue[currentIndex]?.options?.[Number(event.key) - 1]; if (option) { event.preventDefault(); selectOption(String(option.key)); } }
     else if (event.key === "Enter" && queue[currentIndex]?.type === "multiple" && !activeRecord(queue[currentIndex].id).submitted && !answerRevealed) { event.preventDefault(); submit(); }
   });
